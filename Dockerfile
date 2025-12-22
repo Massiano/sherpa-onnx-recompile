@@ -1,19 +1,18 @@
-# Use a specific, stable version of Emscripten known to work with ONNX/Sherpa
-FROM emscripten/emsdk:3.1.50
+# We use 3.1.53 because the sherpa-onnx build scripts explicitly
+# check for this version to match their pre-compiled dependencies.
+FROM emscripten/emsdk:3.1.53
 
-# Install necessary build tools
-# cmake is usually in the base image, but we ensure git/python are there
+# Install dependencies
 RUN apt-get update && apt-get install -y \
     git \
-    python3 \
     build-essential \
+    cmake \
+    python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# We don't COPY the source yet to keep the image generic if you want to cache it.
-# The source will be mounted or copied during the GitHub Action.
+COPY . /app
+RUN chmod +x build-mv3.sh
 
-# Default command runs the build script
-CMD ["/bin/bash", "./build-mv3.sh"]
+CMD ["./build-mv3.sh"]
