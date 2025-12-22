@@ -1,7 +1,5 @@
 name: Build Sherpa-ONNX for MV3
 
-# 1. Triggers: We add 'push' so it runs immediately when you commit.
-# 'workflow_dispatch' lets you click the button manually later.
 on: [push, workflow_dispatch]
 
 jobs:
@@ -13,8 +11,6 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Create Build Script
-      # We write the script here to avoid 'file not found' errors.
-      # Note: We mount to /src, so we must cd into /src/build-mv3
       run: |
         cat << 'EOF' > build-mv3.sh
         #!/bin/bash
@@ -25,10 +21,7 @@ jobs:
         mkdir build-mv3 dist-mv3
         cd build-mv3
 
-        # Flags:
-        # - SHERPA_ONNX_IS_USING_BUILD_WASM_SH=ON : Triggers author's dep download
-        # - DYNAMIC_EXECUTION=0 : MV3 compliance (No eval)
-        # - msimd128 : Performance
+        # Environment & Flags
         export SHERPA_ONNX_IS_USING_BUILD_WASM_SH=ON
         export LDFLAGS="-s DYNAMIC_EXECUTION=0 -msimd128 -s TEXTDECODER=2 -s MODULARIZE=1 -s EXPORT_ES6=1 -s EXPORT_NAME='SherpaOnnx' -s ENVIRONMENT='web,worker' -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s WASM=1 -s SINGLE_FILE=0 -O3"
         
@@ -40,6 +33,7 @@ jobs:
           -DSHERPA_ONNX_ENABLE_PYTHON=OFF \
           -DSHERPA_ONNX_ENABLE_TESTS=OFF \
           -DSHERPA_ONNX_ENABLE_C_API=ON \
+          -DSHERPA_ONNX_ENABLE_WASM=ON \
           -DSHERPA_ONNX_ENABLE_WASM_ASR=ON \
           -DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS" \
           ..
@@ -57,8 +51,7 @@ jobs:
       uses: addnab/docker-run-action@v3
       with:
         image: emscripten/emsdk:3.1.53
-        # CRITICAL: Mount github workspace to /src
-        # The container defaults to /src, so our script will be at /src/build-mv3.sh
+        # Mounts the current workspace to /src
         options: -v ${{ github.workspace }}:/src
         run: ./build-mv3.sh
 
