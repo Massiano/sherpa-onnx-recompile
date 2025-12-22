@@ -1,0 +1,55 @@
+name: Build Sherpa-ONNX for MV3 Extension
+
+on:
+  workflow_dispatch: # Allows manual trigger button
+  push:
+    branches: [ main ]
+
+jobs:
+  build-wasm:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Sherpa-ONNX
+      uses: actions/checkout@v4
+      with:
+        repository: k2-fsa/sherpa-onnx
+        path: sherpa-onnx
+
+    - name: Inject Custom MV3 Build Script
+      # We create the script on the fly or you can copy it from your repo if you have one.
+      # Here we write the content directly to ensure it exists.
+      run: |
+        cd sherpa-onnx
+        cat << 'EOF' > build-mv3.sh
+        #!/bin/bash
+        set -e
+        rm -rf build-mv3 dist-mv3 && mkdir build-mv3 dist-mv3
+        cd build-mv3
+        
+        export LDFLAGS="-s DYNAMIC_EXECUTION=0 -s TEXTDECODER=2 -s MODULARIZE=1 -s EXPORT_ES6=1 -s EXPORT_NAME='SherpaOnnx' -s ENVIRONMENT='web,worker' -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s WASM=1 -s SINGLE_FILE=0 -O3"
+        
+        emcmake cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=./install -DBUILD_SHARED_LIBS=OFF -DSHERPA_ONNX_ENABLE_PYTHON=OFF -DSHERPA_ONNX_ENABLE_TESTS=OFF -DSHERPA_ONNX_ENABLE_C_API=ON -DSHERPA_ONNX_ENABLE_WASM_ASR=ON -DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS" ..
+        
+        emmake make -j$(nproc)
+        
+        cp bin/wasm/asr/sherpa-onnx-wasm-asr.js ../dist-mv3/
+        cp bin/wasm/asr/sherpa-onnx-wasm-asr.wasm ../dist-mv3/
+        echo "Build Complete"
+        EOF
+        chmod +x build-mv3.sh
+
+    - name: Compile in Docker
+      uses: addnab/docker-run-action@v3
+      with:
+        image: emscripten/emsdk:3.1.50
+        options: -v ${{ github.workspace }}/sherpa-onnx:/app
+        run: |
+          cd /app
+          ./build-mv3.sh
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: sherpa-mv3-build
+        path: sherpa-onnx/dist-mv3/
