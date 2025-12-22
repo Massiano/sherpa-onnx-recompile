@@ -1,39 +1,69 @@
-name: Build MV3 WASM
+name: Build Sherpa-ONNX for MV3
 
-on: [workflow_dispatch]
+# 1. Triggers: We add 'push' so it runs immediately when you commit.
+# 'workflow_dispatch' lets you click the button manually later.
+on: [push, workflow_dispatch]
 
 jobs:
-  build:
+  build-wasm:
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      
-      # We create the script on the fly to avoid committing it if you prefer
-      - name: Create Build Script
-        run: |
-          cat << 'EOF' > build-mv3.sh
-          #!/bin/bash
-          set -e
-          mkdir -p build-mv3 dist-mv3 && cd build-mv3
-          export SHERPA_ONNX_IS_USING_BUILD_WASM_SH=ON
-          export LDFLAGS="-s DYNAMIC_EXECUTION=0 -msimd128 -s TEXTDECODER=2 -s MODULARIZE=1 -s EXPORT_ES6=1 -s EXPORT_NAME='SherpaOnnx' -s ENVIRONMENT='web,worker' -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s WASM=1 -s SINGLE_FILE=0 -O3"
-          emcmake cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DSHERPA_ONNX_ENABLE_PYTHON=OFF -DSHERPA_ONNX_ENABLE_TESTS=OFF -DSHERPA_ONNX_ENABLE_C_API=ON -DSHERPA_ONNX_ENABLE_WASM_ASR=ON -DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS" ..
-          emmake make -j$(nproc)
-          cp bin/wasm/asr/sherpa-onnx-wasm-asr.js ../dist-mv3/
-          cp bin/wasm/asr/sherpa-onnx-wasm-asr.wasm ../dist-mv3/
-          EOF
-          chmod +x build-mv3.sh
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Run Build in Docker
+    - name: Create Build Script
+      # We write the script here to avoid 'file not found' errors.
+      # Note: We mount to /src, so we must cd into /src/build-mv3
+      run: |
+        cat << 'EOF' > build-mv3.sh
+        #!/bin/bash
+        set -e
+        
+        # Clean up
+        rm -rf build-mv3 dist-mv3
+        mkdir build-mv3 dist-mv3
+        cd build-mv3
+
+        # Flags:
+        # - SHERPA_ONNX_IS_USING_BUILD_WASM_SH=ON : Triggers author's dep download
+        # - DYNAMIC_EXECUTION=0 : MV3 compliance (No eval)
+        # - msimd128 : Performance
+        export SHERPA_ONNX_IS_USING_BUILD_WASM_SH=ON
+        export LDFLAGS="-s DYNAMIC_EXECUTION=0 -msimd128 -s TEXTDECODER=2 -s MODULARIZE=1 -s EXPORT_ES6=1 -s EXPORT_NAME='SherpaOnnx' -s ENVIRONMENT='web,worker' -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s WASM=1 -s SINGLE_FILE=0 -O3"
+        
+        echo "Configuring CMake..."
+        emcmake cmake \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=./install \
+          -DBUILD_SHARED_LIBS=OFF \
+          -DSHERPA_ONNX_ENABLE_PYTHON=OFF \
+          -DSHERPA_ONNX_ENABLE_TESTS=OFF \
+          -DSHERPA_ONNX_ENABLE_C_API=ON \
+          -DSHERPA_ONNX_ENABLE_WASM_ASR=ON \
+          -DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS" \
+          ..
+
+        echo "Building..."
+        emmake make -j$(nproc)
+
+        echo "Copying artifacts..."
+        cp bin/wasm/asr/sherpa-onnx-wasm-asr.js ../dist-mv3/
+        cp bin/wasm/asr/sherpa-onnx-wasm-asr.wasm ../dist-mv3/
+        EOF
+        chmod +x build-mv3.sh
+
+    - name: Compile in Docker
       uses: addnab/docker-run-action@v3
       with:
         image: emscripten/emsdk:3.1.53
-        # CHANGE HERE: Mount to /src (the image's default WORKDIR)
+        # CRITICAL: Mount github workspace to /src
+        # The container defaults to /src, so our script will be at /src/build-mv3.sh
         options: -v ${{ github.workspace }}:/src
-        # CHANGE HERE: Run the script directly (it's now in the current dir)
         run: ./build-mv3.sh
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sherpa-mv3-wasm
-          path: dist-mv3/
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: sherpa-mv3-wasm
+        path: dist-mv3/
