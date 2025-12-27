@@ -1,14 +1,7 @@
 name: Build-WASM-Multi-Sequential
 
 on:
-  push:
-    branches:
-      - master
   workflow_dispatch:
-
-concurrency:
-  group: build-wasm-extension-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   build-en:
