@@ -1,0 +1,102 @@
+name: Build-WASM-MultiLanguage
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: build-wasm-extension-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-extension-wasm:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - lang: en
+            model_url: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-21.tar.bz2
+            model_dir: sherpa-onnx-streaming-zipformer-en-2023-06-21
+            encoder: encoder-epoch-99-avg-1.int8.onnx
+            decoder: decoder-epoch-99-avg-1.onnx
+            joiner: joiner-epoch-99-avg-1.onnx
+          - lang: zh
+            model_url: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23.tar.bz2
+            model_dir: sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23
+            encoder: encoder-epoch-99-avg-1.int8.onnx
+            decoder: decoder-epoch-99-avg-1.onnx
+            joiner: joiner-epoch-99-avg-1.onnx
+          - lang: ko
+            model_url: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-korean-2024-06-16.tar.bz2
+            model_dir: sherpa-onnx-streaming-zipformer-korean-2024-06-16
+            encoder: encoder-epoch-99-avg-1.int8.onnx
+            decoder: decoder-epoch-99-avg-1.onnx
+            joiner: joiner-epoch-99-avg-1.onnx
+          - lang: multi
+            model_url: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-9-2.tar.bz2
+            model_dir: sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-9-2
+            encoder: encoder-epoch-11-avg-1.int8.onnx
+            decoder: decoder-epoch-11-avg-1.onnx
+            joiner: joiner-epoch-11-avg-1.onnx
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install emsdk
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.53
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: Download model files (${{ matrix.lang }})
+        shell: bash
+        run: |
+          cd wasm/asr/assets
+          
+          wget -q ${{ matrix.model_url }}
+          tar xvf *.tar.bz2
+          rm *.tar.bz2
+          
+          mv ${{ matrix.model_dir }}/${{ matrix.encoder }} encoder.onnx
+          mv ${{ matrix.model_dir }}/${{ matrix.decoder }} decoder.onnx
+          mv ${{ matrix.model_dir }}/${{ matrix.joiner }} joiner.onnx
+          mv ${{ matrix.model_dir }}/tokens.txt ./
+          rm -rf ${{ matrix.model_dir }}
+
+      - name: Patch CMake for Manifest V3 (No Unsafe Eval)
+        shell: bash
+        run: |
+          sed -i 's/set(MY_FLAGS " -s FORCE_FILESYSTEM=1/set(MY_FLAGS " -s DYNAMIC_EXECUTION=0 -s ENVIRONMENT=web -s FORCE_FILESYSTEM=1/' wasm/asr/CMakeLists.txt
+          grep "DYNAMIC_EXECUTION=0" wasm/asr/CMakeLists.txt
+
+      - name: Build sherpa-onnx for WebAssembly
+        shell: bash
+        run: |
+          ./build-wasm-simd-asr.sh
+
+      - name: Collect and Upload Artifacts
+        shell: bash
+        run: |
+          OUTPUT_DIR=sherpa-onnx-extension-build-${{ matrix.lang }}
+          mkdir -p $OUTPUT_DIR
+          
+          cp -r build-wasm-simd-asr/install/bin/wasm/asr/* $OUTPUT_DIR/
+          
+          # Rename files to include language suffix
+          cd $OUTPUT_DIR
+          mv sherpa-onnx-wasm-main-asr.js sherpa-onnx-wasm-main-asr-${{ matrix.lang }}.js
+          mv sherpa-onnx-wasm-main-asr.wasm sherpa-onnx-wasm-main-asr-${{ matrix.lang }}.wasm
+          mv sherpa-onnx-wasm-main-asr.data sherpa-onnx-wasm-main-asr-${{ matrix.lang }}.data
+          cd ..
+          
+          tar cjfv extension-build-${{ matrix.lang }}.tar.bz2 $OUTPUT_DIR
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sherpa-onnx-extension-build-${{ matrix.lang }}
+          path: extension-build-${{ matrix.lang }}.tar.bz2
