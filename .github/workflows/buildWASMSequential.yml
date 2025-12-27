@@ -1,0 +1,191 @@
+name: Build-WASM-Multi-Sequential
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: build-wasm-extension-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-en:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install emsdk
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.53
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: Download model files
+        shell: bash
+        run: |
+          cd wasm/asr/assets
+          wget -q https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-en-2023-06-21.tar.bz2
+          tar xvf *.tar.bz2 && rm *.tar.bz2
+          mv sherpa-onnx-streaming-zipformer-en-2023-06-21/encoder-epoch-99-avg-1.int8.onnx encoder.onnx
+          mv sherpa-onnx-streaming-zipformer-en-2023-06-21/decoder-epoch-99-avg-1.onnx decoder.onnx
+          mv sherpa-onnx-streaming-zipformer-en-2023-06-21/joiner-epoch-99-avg-1.onnx joiner.onnx
+          mv sherpa-onnx-streaming-zipformer-en-2023-06-21/tokens.txt ./
+          rm -rf sherpa-onnx-streaming-zipformer-en-2023-06-21
+
+      - name: Patch CMake for MV3
+        run: |
+          sed -i 's/set(MY_FLAGS " -s FORCE_FILESYSTEM=1/set(MY_FLAGS " -s DYNAMIC_EXECUTION=0 -s ENVIRONMENT=web -s FORCE_FILESYSTEM=1/' wasm/asr/CMakeLists.txt
+
+      - name: Build
+        run: ./build-wasm-simd-asr.sh
+
+      - name: Package
+        run: |
+          mkdir -p out
+          cp build-wasm-simd-asr/install/bin/wasm/asr/sherpa-onnx-wasm-main-asr.* out/
+          cd out
+          for f in sherpa-onnx-wasm-main-asr.*; do mv "$f" "${f/wasm-main-asr/wasm-main-asr-en}"; done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-en
+          path: out/
+
+  build-zh:
+    needs: build-en
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install emsdk
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.53
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: Download model files
+        shell: bash
+        run: |
+          cd wasm/asr/assets
+          wget -q https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23.tar.bz2
+          tar xvf *.tar.bz2 && rm *.tar.bz2
+          mv sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/encoder-epoch-99-avg-1.int8.onnx encoder.onnx
+          mv sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/decoder-epoch-99-avg-1.onnx decoder.onnx
+          mv sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/joiner-epoch-99-avg-1.onnx joiner.onnx
+          mv sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/tokens.txt ./
+          rm -rf sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23
+
+      - name: Patch CMake for MV3
+        run: |
+          sed -i 's/set(MY_FLAGS " -s FORCE_FILESYSTEM=1/set(MY_FLAGS " -s DYNAMIC_EXECUTION=0 -s ENVIRONMENT=web -s FORCE_FILESYSTEM=1/' wasm/asr/CMakeLists.txt
+
+      - name: Build
+        run: ./build-wasm-simd-asr.sh
+
+      - name: Package
+        run: |
+          mkdir -p out
+          cp build-wasm-simd-asr/install/bin/wasm/asr/sherpa-onnx-wasm-main-asr.* out/
+          cd out
+          for f in sherpa-onnx-wasm-main-asr.*; do mv "$f" "${f/wasm-main-asr/wasm-main-asr-zh}"; done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-zh
+          path: out/
+
+  build-ko:
+    needs: build-zh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install emsdk
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.53
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: Download model files
+        shell: bash
+        run: |
+          cd wasm/asr/assets
+          wget -q https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-korean-2024-06-16.tar.bz2
+          tar xvf *.tar.bz2 && rm *.tar.bz2
+          mv sherpa-onnx-streaming-zipformer-korean-2024-06-16/encoder-epoch-99-avg-1.int8.onnx encoder.onnx
+          mv sherpa-onnx-streaming-zipformer-korean-2024-06-16/decoder-epoch-99-avg-1.onnx decoder.onnx
+          mv sherpa-onnx-streaming-zipformer-korean-2024-06-16/joiner-epoch-99-avg-1.onnx joiner.onnx
+          mv sherpa-onnx-streaming-zipformer-korean-2024-06-16/tokens.txt ./
+          rm -rf sherpa-onnx-streaming-zipformer-korean-2024-06-16
+
+      - name: Patch CMake for MV3
+        run: |
+          sed -i 's/set(MY_FLAGS " -s FORCE_FILESYSTEM=1/set(MY_FLAGS " -s DYNAMIC_EXECUTION=0 -s ENVIRONMENT=web -s FORCE_FILESYSTEM=1/' wasm/asr/CMakeLists.txt
+
+      - name: Build
+        run: ./build-wasm-simd-asr.sh
+
+      - name: Package
+        run: |
+          mkdir -p out
+          cp build-wasm-simd-asr/install/bin/wasm/asr/sherpa-onnx-wasm-main-asr.* out/
+          cd out
+          for f in sherpa-onnx-wasm-main-asr.*; do mv "$f" "${f/wasm-main-asr/wasm-main-asr-ko}"; done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-ko
+          path: out/
+
+  build-multi:
+    needs: build-ko
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install emsdk
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.53
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: Download model files
+        shell: bash
+        run: |
+          cd wasm/asr/assets
+          wget -q https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-9-2.tar.bz2
+          tar xvf *.tar.bz2 && rm *.tar.bz2
+          mv sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-9-2/encoder-epoch-11-avg-1.int8.onnx encoder.onnx
+          mv sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-9-2/decoder-epoch-11-avg-1.onnx decoder.onnx
+          mv sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-9-2/joiner-epoch-11-avg-1.onnx joiner.onnx
+          mv sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-9-2/tokens.txt ./
+          rm -rf sherpa-onnx-streaming-zipformer-multi-zh-hans-2023-9-2
+
+      - name: Patch CMake for MV3
+        run: |
+          sed -i 's/set(MY_FLAGS " -s FORCE_FILESYSTEM=1/set(MY_FLAGS " -s DYNAMIC_EXECUTION=0 -s ENVIRONMENT=web -s FORCE_FILESYSTEM=1/' wasm/asr/CMakeLists.txt
+
+      - name: Build
+        run: ./build-wasm-simd-asr.sh
+
+      - name: Package
+        run: |
+          mkdir -p out
+          cp build-wasm-simd-asr/install/bin/wasm/asr/sherpa-onnx-wasm-main-asr.* out/
+          cd out
+          for f in sherpa-onnx-wasm-main-asr.*; do mv "$f" "${f/wasm-main-asr/wasm-main-asr-multi}"; done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-multi
+          path: out/
